@@ -1,7 +1,17 @@
 from flask import Flask, jsonify, request
 from flask_httpauth import HTTPBasicAuth
+from flasgger import Swagger
+from bs4 import BeautifulSoup
+import requests
 
 app = Flask(__name__)
+
+app.config['SWAGGER'] = {
+    'title': 'My Flask API',
+    'uiversion': 3
+}
+
+swagger = Swagger(app)
 
 auth = HTTPBasicAuth()
 
@@ -21,6 +31,75 @@ def home():
     return "Hello, Flask!"
 
 items = []
+
+def get_title(url):
+    try:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.title.string.strip()
+        return jsonify({"title": title})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/scrape/title', methods=['GET'])
+@auth.login_required
+def scrape_title():
+    """
+    Extract the title of a web page provided by the URL.
+    ---
+    security:
+        - BasicAuth: []
+    parameters:
+        - name: url
+          in: query
+          type: string
+          required: true
+          description: URL of the web page
+    responses:
+        200:
+          description: Web page title
+    """
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+    return get_title(url)
+
+def get_content(url):
+    try:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        headers = []
+        for header_tag in ['h1', 'h2', 'h3']:
+            for header in soup.find_all(header_tag):
+                headers.append(header.get_text(strip=True))
+
+        paragraphs = [p.get_text(strip=True) for p in soup.find_all('p')]
+        return jsonify({"headers": headers, "paragraphs": paragraphs})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/scrape/content', methods=['GET'])
+@auth.login_required
+def scrape_content():
+    """
+    Extract headers and paragraphs of a web page provided by the URL.
+    ---
+    security:
+        - BasicAuth: []
+    parameters:
+        - name: url
+          in: query
+          type: string
+          required: true
+          description: URL of the web page
+    responses:
+        200:
+          description: Web page title
+    """
+    url = request.args.get('url')
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+    return get_content(url)
 
 @app.route('/items', methods=['GET'])
 def get_items():
